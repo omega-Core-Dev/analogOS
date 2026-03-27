@@ -15,6 +15,24 @@ All complex systems share the same computational structure:
 scan → broadcast → candidate → propagate → compose
 
 ---
+## ⚙️ Quick Example
+
+python
+from analog_core.pipeline import Pipeline
+
+pipeline = Pipeline()
+
+result = pipeline.run(
+    source="query",
+    entities=["token1", "token2", "token3"]
+)
+
+print(result)
+
+---
+
+
+---
 
 🧠 What is it?
 
@@ -25,6 +43,17 @@ It's not machine learning.
 It's not just abstraction.
 
 It's a systems algebra based on reusable universal operators.
+
+---
+INPUT:
+"Como funciona atenção?"
+
+OUTPUT:
+scan → tokens
+broadcast → query
+candidate → keys relevantes
+propagate → contexto
+compose → respost
 
 ---
 
