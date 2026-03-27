@@ -1,36 +1,48 @@
-analogOS
+# analogOS
 
-Framework de Analogia Programável
+**Programmable Analogy Framework**
 
-«"Analogia não é explicação de sistema. Analogia é o sistema."»
+> Analogy is not a way to explain systems.
 
----
-
-🧠 O que é
-
-analogOS é um framework que formaliza analogia como primitiva computacional.
-
-Não é machine learning.
-Não é apenas abstração.
-
-É uma álgebra de sistemas baseada em operadores universais reutilizáveis.
+> Analogy *is* the system.
 
 ---
 
-⚙️ Núcleo do Sistema
+## ⚡ Core Idea
 
-O framework é construído sobre 5 primitivas:
+All complex systems share the same computational structure:
 
 scan → broadcast → candidate → propagate → compose
 
-Cada uma representa uma etapa fundamental de qualquer sistema onde informação flui.
+---
+
+🧠 What is it?
+
+analogOS is a framework that formalizes analogy as a computational primitive.
+
+It's not machine learning.
+
+It's not just abstraction.
+
+It's a systems algebra based on reusable universal operators.
 
 ---
 
-🔍 Primitivas
+⚙️ System Core
 
-Primitiva| Função
-scan| percorre entidades e cria mapa
+The framework is built on 5 primitives:
+
+scan → broadcast → candidate → propagate → compose
+
+Each represents a fundamental step in any system where information flows.
+
+---
+
+🔍 Primitives
+
+Primitive | Function
+
+ scan| percorre entidades e cria mapa
 broadcast| emite sinal a partir de uma fonte
 candidate| filtra por threshold
 propagate| espalha sinal entre vizinhos
