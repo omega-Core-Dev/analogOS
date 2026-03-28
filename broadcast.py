@@ -2,8 +2,12 @@
 analogOS · primitives/broadcast.py
 broadcast() — Fonte emite sinal; intensidade decai com distância.
 Complexidade: O(k), k = entidades no mapa.
+
+v0.2.0 — distâncias vetorizadas com numpy (elimina loop Python).
+         Speedup esperado: 10-50x em datasets grandes.
 """
 
+import numpy as np
 from analog_core.entity import Entity
 
 FALLOFF_MODES = ("sqrt", "linear", "quadratic")
@@ -29,29 +33,31 @@ def broadcast(
     -------
     signals : { entity_id → signal_strength }
     """
-    import random
-
     if falloff not in FALLOFF_MODES:
         raise ValueError(f"falloff deve ser um de {FALLOFF_MODES}")
 
-    signals: dict[str, float] = {}
+    ids     = list(ref_map.keys())
+    vectors = np.stack([ref_map[eid].vector for eid in ids])  # shape (n, dim)
 
-    distances = {eid: source.distance_to(e) for eid, e in ref_map.items()}
-    d_max = max(distances.values()) or 1.0  # evita divisão por zero
+    # ── distâncias vetorizadas — O(n) em numpy, sem loop Python ──────────────
+    diff      = vectors - source.vector          # broadcast numpy
+    distances = np.linalg.norm(diff, axis=1)     # shape (n,)
 
-    for eid, dist in distances.items():
-        d_norm = dist / d_max  # normaliza para [0, 1]
+    d_max  = distances.max() or 1.0
+    d_norm = distances / d_max                   # normaliza [0, 1]
 
-        if falloff == "quadratic":
-            strength = intensity / (dist ** 2 + 1)
-        elif falloff == "sqrt":
-            strength = intensity * (1 - (d_norm ** 0.5))
-        else:  # linear
-            strength = intensity * (1 - d_norm)
+    # ── falloff vetorizado ────────────────────────────────────────────────────
+    if falloff == "quadratic":
+        strengths = intensity / (distances ** 2 + 1)
+    elif falloff == "sqrt":
+        strengths = intensity * (1 - d_norm ** 0.5)
+    else:  # linear
+        strengths = intensity * (1 - d_norm)
 
-        if noise > 0:
-            strength += random.uniform(-noise, noise)
+    # ── noise opcional ────────────────────────────────────────────────────────
+    if noise > 0:
+        strengths = strengths + np.random.uniform(-noise, noise, size=len(ids))
 
-        signals[eid] = max(0.0, strength)
+    strengths = np.maximum(0.0, strengths)
 
-    return signals
+    return dict(zip(ids, strengths.tolist()))
