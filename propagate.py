@@ -2,9 +2,12 @@
 analogOS · primitives/propagate.py
 propagate() — Candidatos repassam sinal para vizinhos.
 Formação emergente de clusters.
-Complexidade: O(k·r), r = vizinhos no raio.
+
+v0.2.0 — vetorizado com numpy.
+         Elimina loop Python duplo O(k·n) — speedup esperado 10-50x.
 """
 
+import numpy as np
 from analog_core.entity import Entity
 
 
@@ -23,30 +26,54 @@ def propagate(
     signals       : sinais atuais (base para o repasse)
     social_factor : eficiência de repasse [0, 1]
     radius        : distância máxima de vizinhança
-                    None → sem limite (cuidado: O(n²))
+                    None → sem limite
 
     Retorna
     -------
-    propagated : { entity_id → signal_strength } — sinais após propagação
-                 entidades já candidatas mantêm seu sinal original
+    propagated : { entity_id → signal_strength }
     """
-    propagated: dict[str, float] = dict(signals)  # copia base
+    if not candidates:
+        return dict(signals)
 
-    candidate_ids = {e.id for e in candidates}
+    candidate_ids  = {e.id for e in candidates}
 
-    for cand in candidates:
-        cand_signal = signals.get(cand.id, 0.0)
+    # separa targets — entidades que NÃO são candidatos
+    targets        = [e for e in all_entities if e.id not in candidate_ids]
 
-        for target in all_entities:
-            if target.id in candidate_ids:
-                continue  # candidatos não recebem repasse entre si
+    if not targets:
+        return dict(signals)
 
-            dist = cand.distance_to(target)
+    # ── matrizes numpy ────────────────────────────────────────────────────────
+    cand_vectors   = np.stack([e.vector for e in candidates])   # (k, dim)
+    target_vectors = np.stack([e.vector for e in targets])      # (t, dim)
+    cand_signals   = np.array([signals.get(e.id, 0.0)
+                                for e in candidates])           # (k,)
 
-            if radius is not None and dist > radius:
-                continue  # fora do raio de vizinhança
+    # ── distâncias: (k, t) — cada candidato vs cada target ───────────────────
+    # broadcast numpy: (k, 1, dim) - (1, t, dim) → (k, t, dim)
+    diff      = cand_vectors[:, np.newaxis, :] - target_vectors[np.newaxis, :, :]
+    distances = np.linalg.norm(diff, axis=2)                    # (k, t)
 
-            repasse = cand_signal * social_factor / (dist + 1)
-            propagated[target.id] = propagated.get(target.id, 0.0) + repasse
+    # ── máscara de radius ─────────────────────────────────────────────────────
+    if radius is not None:
+        mask = distances <= radius                               # (k, t) bool
+    else:
+        mask = np.ones_like(distances, dtype=bool)
+
+    # ── repasse vetorizado ────────────────────────────────────────────────────
+    # repasse[k, t] = cand_signal[k] * social_factor / (dist[k,t] + 1)
+    repasse = (cand_signals[:, np.newaxis] * social_factor
+               / (distances + 1))                               # (k, t)
+
+    repasse = repasse * mask                                     # aplica radius
+
+    # soma contribuições de todos os candidatos para cada target
+    total_repasse = repasse.sum(axis=0)                         # (t,)
+
+    # ── monta dict final ──────────────────────────────────────────────────────
+    propagated = dict(signals)
+    for i, target in enumerate(targets):
+        propagated[target.id] = (propagated.get(target.id, 0.0)
+                                 + float(total_repasse[i]))
 
     return propagated

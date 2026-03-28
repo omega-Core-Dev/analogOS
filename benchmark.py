@@ -552,6 +552,94 @@ def benchmark_broadcast_v2():
 
     print(f"\n  Conclusao: broadcast_v2 elimina loop Python — ganho cresce com dataset.")
 
+
+# PROPAGATE v2 — vetorizado
+# ══════════════════════════════════════════════════════════════════════════════
+
+def propagate_v2(candidates, all_entities, signals, social_factor=0.5, radius=None):
+    """v0.2.0 — distancias e repasse vetorizados com numpy."""
+    if not candidates:
+        return dict(signals)
+    candidate_ids  = {e.id for e in candidates}
+    targets        = [e for e in all_entities if e.id not in candidate_ids]
+    if not targets:
+        return dict(signals)
+    cand_vectors   = np.stack([e.vector for e in candidates])
+    target_vectors = np.stack([e.vector for e in targets])
+    cand_signals   = np.array([signals.get(e.id, 0.0) for e in candidates])
+    diff      = cand_vectors[:, np.newaxis, :] - target_vectors[np.newaxis, :, :]
+    distances = np.linalg.norm(diff, axis=2)
+    if radius is not None:
+        mask = distances <= radius
+    else:
+        mask = np.ones_like(distances, dtype=bool)
+    repasse       = (cand_signals[:, np.newaxis] * social_factor / (distances + 1)) * mask
+    total_repasse = repasse.sum(axis=0)
+    propagated    = dict(signals)
+    for i, target in enumerate(targets):
+        propagated[target.id] = propagated.get(target.id, 0.0) + float(total_repasse[i])
+    return propagated
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BENCHMARK 7 — propagate v1 (loop) vs v2 (vetorizado)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def benchmark_propagate_v2():
+    print("\n" + "="*60)
+    print("BENCHMARK 7 — propagate: loop Python vs numpy vetorizado")
+    print("="*60)
+
+    sizes = [100, 500, 1000, 5000, 10000]
+    runs  = 3
+
+    query = Entity(
+        id='pv2_query',
+        value='propagate v2 test',
+        vector=np.array([0.9, 0.8, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1]),
+        tags=['conceito', 'cognitivo'],
+    )
+
+    print(f"\n  {'Entidades':>10} {'v1 loop (ms)':>14} {'v2 numpy (ms)':>15} {'Speedup':>10}")
+    print(f"  {'-'*54}")
+
+    for size in sizes:
+        n_per    = max(size // len(DOMAIN_TAGS), 1)
+        entities = []
+        for domain, base_vec in DOMAIN_VECTORS.items():
+            tags = DOMAIN_TAGS[domain]
+            for i in range(n_per):
+                vec = base_vec + np.random.normal(0, 0.15, 8)
+                entities.append(Entity(
+                    id=f"{domain}_{i}",
+                    value=f"{domain}_token_{i}",
+                    vector=np.clip(vec, 0, 1),
+                    tags=[tags[i % len(tags)]],
+                ))
+        entities = entities[:size]
+        ref_map     = scan(entities)
+        signals_bc  = broadcast_v2(query, ref_map)
+        cands       = candidate(entities, signals_bc, threshold=0.4,
+                                source_tags=query.tags)
+
+        # v1
+        start = time.perf_counter()
+        for _ in range(runs):
+            propagate(cands, entities, signals_bc, social_factor=0.5)
+        t_v1 = (time.perf_counter() - start) / runs * 1000
+
+        # v2
+        start = time.perf_counter()
+        for _ in range(runs):
+            propagate_v2(cands, entities, signals_bc, social_factor=0.5)
+        t_v2 = (time.perf_counter() - start) / runs * 1000
+
+        speedup = t_v1 / t_v2 if t_v2 > 0 else 0
+        print(f"  {size:>10} {t_v1:>13.2f}ms {t_v2:>14.2f}ms {speedup:>9.1f}x")
+
+    print(f"\n  Conclusao: propagate_v2 elimina loop duplo O(k*n) — maior ganho em datasets grandes.")
+
+
 if __name__ == '__main__':
     print("analogOS · Benchmark Suite · v0.2.0")
     print("Gerando dataset sintetico...")
@@ -564,7 +652,11 @@ if __name__ == '__main__':
     benchmark_radius()
     benchmark_scale()
     benchmark_broadcast_v2()
+    benchmark_propagate_v2()
 
     print("\n" + "="*60)
     print("Benchmark concluido.")
     print("="*60)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
