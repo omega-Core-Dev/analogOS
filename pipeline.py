@@ -2,6 +2,8 @@
 analogOS · pipeline.py
 Pipeline universal — encadeia scan → broadcast → candidate → propagate → compose.
 Qualquer domínio usa a mesma interface; só os parâmetros mudam.
+
+v0.2.0 — passa source_tags ao candidate() para filtro semântico por etiqueta.
 """
 
 from dataclasses import dataclass, field
@@ -22,6 +24,7 @@ class PipelineConfig:
     noise: float = 0.0
     # candidate
     threshold: float = 0.4
+    use_tag_filter: bool = True   # ativa filtro de etiqueta
     # propagate
     social_factor: float = 0.5
     radius: float | None = None
@@ -37,7 +40,6 @@ class PipelineResult:
     candidates: list[Entity]
     signals_propagated: dict[str, float]
     output: dict
-    # cluster usado no compose
     cluster: list[Entity] = field(default_factory=list)
 
 
@@ -73,11 +75,13 @@ class Pipeline:
             noise=cfg.noise,
         )
 
-        # 3. CANDIDATE — filtra elegíveis
+        # 3. CANDIDATE — filtra elegíveis por threshold + etiqueta
+        source_tags = source.tags if cfg.use_tag_filter else None
         candidates = candidate(
             entities=entities,
             signals=signals_bc,
             threshold=cfg.threshold,
+            source_tags=source_tags,
         )
 
         # 4. PROPAGATE — candidatos repassam para vizinhos
@@ -90,12 +94,17 @@ class Pipeline:
         )
 
         # cluster = candidatos + entidades que receberam propagação acima de threshold/2
+        # filtro de etiqueta também aplicado aqui — fecha o vazamento
         half_thresh = cfg.threshold / 2
         candidate_ids = {e.id for e in candidates}
         propagated_extras = [
             e for e in entities
             if e.id not in candidate_ids
             and signals_prop.get(e.id, 0.0) >= half_thresh
+            and (
+                source_tags is None
+                or any(t in source_tags for t in e.tags)
+            )
         ]
         cluster = candidates + propagated_extras
 
